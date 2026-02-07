@@ -1,0 +1,88 @@
+name: chatbi
+
+services:
+  postgres:
+    restart: always
+    image: postgres:15-alpine
+    container_name: chatbi-postgres
+    ports:
+      - 15432:5432
+    environment:
+      POSTGRES_USER: chatbi
+      POSTGRES_PASSWORD: 12345
+      POSTGRES_DB: chatbi
+
+    volumes:
+
+      - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+
+  redis:
+    restart: always
+    image: redis:7-alpine
+    container_name: chatbi-redis
+    ports:
+      - 16379:6379
+
+  # ChatBI Application (Nginx + FastAPI)
+  chatbi-app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: chatbi-app
+    ports:
+      - 8080:80  # Nginx serves on port 80 inside container
+    environment:
+      # Database
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=chatbi
+      - DB_USER=chatbi
+      - DB_PASSWORD=12345
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      - CACHE_TYPE=redis
+      # JWT
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-chatbi-dev-secret-please-change-in-production}
+      - JWT_ALGORITHM=HS256
+      - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
+      # LLM
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-gpt-3.5-turbo}
+
+      # App
+      - ENV=production
+      - DEBUG=false
+      - REQUIRE_AUTH=true
+    depends_on:
+      - postgres
+      - redis
+
+    volumes:
+      - ../runs:/app/runs  # Mount logs directory
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.1
+    container_name: chatbi-qdrant
+    restart: always
+    ports:
+      - 6333:6333  # HTTP API
+      - 6334:6334  # gRPC API
+    volumes:
+      - ./qdrant/storage:/qdrant/storage
+      - ./qdrant/snapshots:/qdrant/snapshots
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:6333/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
