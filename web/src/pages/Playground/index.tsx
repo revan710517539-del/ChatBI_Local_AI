@@ -15,6 +15,8 @@ import { Badge, theme, Button, type GetProp, Space, Select } from 'antd';
 import useChat from '@/models/chat';
 import { logger } from '@/utils/logger';
 import { datasourceService, type DatasourceType } from '@/services/datasource';
+import { aiConfigService, type LLMSource, type SceneType } from '@/services/aiConfig';
+import { agentBuilderService } from '@/services/agentBuilder';
 
 const log = logger.extend('copilot:playground');
 
@@ -23,10 +25,15 @@ const useStyle = createStyles(({ token, css }) => {
     layout: css`
       width: 100%;
       min-height: 100%;
-      border-radius: ${token.borderRadius}px;
+      border-radius: 16px;
       display: flex;
       flex-direction: column;
-      background: #fff;
+      background:
+        radial-gradient(circle at 90% -15%, rgba(15, 110, 255, 0.18), transparent 45%),
+        radial-gradient(circle at -10% 130%, rgba(3, 166, 120, 0.14), transparent 40%),
+        rgba(255, 255, 255, 0.88);
+      border: 1px solid ${token.colorBorderSecondary};
+      box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
       font-family: ${token.fontFamily};
 
       .ant-prompts {
@@ -54,7 +61,7 @@ const useStyle = createStyles(({ token, css }) => {
       flex-direction: column;
       padding: ${token.paddingLG}px;
       gap: 16px;
-      padding-bottom: 24px;
+      padding-bottom: 18px;
       background: transparent;
     `,
     messages: css`
@@ -73,8 +80,8 @@ const useStyle = createStyles(({ token, css }) => {
       align-items: center;
     `,
     welcomeTitle: css`
-      font-size: 32px;
-      font-weight: 700;
+      font-size: 34px;
+      font-weight: 800;
       margin-bottom: 12px;
       background: linear-gradient(
         135deg,
@@ -137,7 +144,7 @@ const useStyle = createStyles(({ token, css }) => {
       margin: 0 auto;
       width: 100%;
       padding: 0 24px 24px;
-      background: #fff;
+      background: linear-gradient(to top, rgba(244, 247, 251, 0.96), rgba(244, 247, 251, 0.35));
     `,
     senderToolbar: css`
       display: flex;
@@ -170,7 +177,15 @@ const useStyle = createStyles(({ token, css }) => {
   };
 });
 
-const Playground: React.FC = () => {
+type PlaygroundProps = {
+  scene?: SceneType;
+  title?: string;
+};
+
+const Playground: React.FC<PlaygroundProps> = ({
+  scene = 'data_discuss',
+  title = 'SmartBI DataDiscuss',
+}) => {
   const {
     loading,
     onPromptsItemClick,
@@ -181,6 +196,11 @@ const Playground: React.FC = () => {
     setPrompt,
     bubbleItems,
     setDatasourceId,
+    llmSourceId,
+    setLlmSourceId,
+    agentProfileId,
+    setAgentProfileId,
+    setScene,
   } = useChat();
 
   // Datasource state
@@ -189,23 +209,66 @@ const Playground: React.FC = () => {
     string | undefined
   >();
   const [loadingDatasources, setLoadingDatasources] = useState(false);
+  const [llmSources, setLlmSources] = useState<LLMSource[]>([]);
+  const [agentProfiles, setAgentProfiles] = useState<any[]>([]);
 
   // Load datasources on mount
+  useEffect(() => {
+    setScene(scene);
+  }, [scene]);
+
+  useEffect(() => {
+    const loadLLMSources = async () => {
+      try {
+        const list = await aiConfigService.listLLMSources();
+        setLlmSources(list || []);
+        if (!llmSourceId && list?.length) {
+          const defaultSource = list.find((x) => x.is_default) || list[0];
+          setLlmSourceId(defaultSource.id);
+        }
+      } catch (error) {
+        log('Failed to load llm sources:', error);
+      }
+    };
+    loadLLMSources();
+  }, []);
+
+  useEffect(() => {
+    const loadAgents = async () => {
+      try {
+        const profiles = await agentBuilderService.listProfiles();
+        setAgentProfiles(profiles || []);
+        if (!agentProfileId && profiles?.length) {
+          setAgentProfileId(profiles[0].id);
+        }
+      } catch (error) {
+        log('Failed to load agents:', error);
+      }
+    };
+    loadAgents();
+  }, []);
+
   useEffect(() => {
     const loadDatasources = async () => {
       setLoadingDatasources(true);
       try {
         const response = await datasourceService.getDatasources({ limit: 100 });
-        // Handle StandardResponse wrapper: { data: [...], success: true, message: "..." }
-        const list = Array.isArray((response as any)?.data?.data)
-          ? (response as any).data.data
-          : Array.isArray((response as any)?.data)
-            ? (response as any).data
+        // Handle StandardResponse wrapper: { data: { items: [...] } }
+        const list = Array.isArray((response as any)?.data?.items)
+          ? (response as any).data.items
+          : Array.isArray((response as any)?.items)
+            ? (response as any).items
             : [];
         setDatasources(list);
 
-        // Find and set default datasource
-        const defaultDs = list.find((ds: DatasourceType) => ds.is_default);
+        // Prefer default datasource, then DuckDB mart for loan analytics.
+        const defaultDs =
+          list.find((ds: DatasourceType) => ds.is_default) ||
+          list.find((ds: DatasourceType) =>
+            String((ds as any).type || '')
+              .toLowerCase()
+              .includes('duckdb'),
+          );
         if (defaultDs) {
           setSelectedDatasource(defaultDs.id);
           setDatasourceId(defaultDs.id);
@@ -330,10 +393,10 @@ const Playground: React.FC = () => {
           {bubbleItems.length === 0 ? (
             <div className={styles.placeholder}>
               <div className={styles.welcomeTitle}>
-                Welcome to ChatBI Playground
+                {title}
               </div>
               <div className={styles.welcomeDesc}>
-                Ask questions to generate SQL, chart visualization and more.
+                面向贷款业务场景，输入问题即可自动完成 SQL、图表与指标解读。
               </div>
               <div className={styles.suggestionGrid}>
                 {prompts.map((item, index) => (
@@ -354,7 +417,7 @@ const Playground: React.FC = () => {
                     />
                     <div>
                       <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                        Example Query {index + 1}
+                        示例问题 {index + 1}
                       </div>
                       <div
                         style={{
@@ -408,6 +471,28 @@ const Playground: React.FC = () => {
                     value: ds.id,
                   }))}
                 />
+                <Select
+                  size="small"
+                  style={{ width: 220 }}
+                  placeholder="Select LLM"
+                  value={llmSourceId}
+                  onChange={(value) => setLlmSourceId(value)}
+                  options={llmSources.map((item) => ({
+                    label: `${item.name} (${item.model})`,
+                    value: item.id,
+                  }))}
+                />
+                <Select
+                  size="small"
+                  style={{ width: 220 }}
+                  placeholder="Select Agent"
+                  value={agentProfileId}
+                  onChange={(value) => setAgentProfileId(value)}
+                  options={agentProfiles.map((item) => ({
+                    label: `${item.name}`,
+                    value: item.id,
+                  }))}
+                />
                 <Button
                   onClick={clearMessages}
                   type="text"
@@ -430,8 +515,8 @@ const Playground: React.FC = () => {
             disabled={loading}
             placeholder={
               loading
-                ? '🤔 AI is thinking...'
-                : '💬 Type a message to analyze your data...'
+                ? '模型推理中，请稍候...'
+                : '输入分析问题，例如：经营贷近30天逾期率变化及原因'
             }
             className={styles.sender}
           />

@@ -41,6 +41,7 @@ class SqlAgent:
         table_schema,
         previous_sql: str = None,
         error_message: str = None,
+        system_prompt: str | None = None,
     ) -> AgentMessage:
         logger.debug(f"[{self.name}]: infer sql (correction={bool(error_message)})")
 
@@ -53,7 +54,11 @@ class SqlAgent:
                 table_schema=table_schema,
             )
         else:
-            messages = get_sql_prompt(question=question, table_schema=table_schema)
+            messages = get_sql_prompt(
+                question=question,
+                table_schema=table_schema,
+                initial_prompt=system_prompt,
+            )
 
         logger.debug(f"[{self.name}]: messages: {messages}")
         # response = self.model.llm(messages=messages)

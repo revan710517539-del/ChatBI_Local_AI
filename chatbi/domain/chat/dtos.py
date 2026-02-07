@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+from typing import Literal
 
 
 class ChatDTO(BaseModel):
@@ -21,6 +22,10 @@ class ChatDTO(BaseModel):
     question: str
     table_schema: Optional[str] = None
     visualize: bool = True
+    datasource_id: Optional[str] = None
+    llm_source_id: Optional[str] = None
+    agent_profile_id: Optional[str] = None
+    scene: Literal["dashboard", "data_discuss"] = "data_discuss"
 
 
 class GenerateSqlRequest(BaseModel):

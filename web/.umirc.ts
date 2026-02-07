@@ -8,7 +8,7 @@ export default defineConfig({
   initialState: {},
   request: {},
   layout: {
-    title: 'ChatBI',
+    title: 'SmartBI',
   },
   routes: [
     {
@@ -22,17 +22,46 @@ export default defineConfig({
       icon: 'HomeOutlined',
     },
     {
-      name: 'Playground',
-      path: '/playground',
-      component: './Playground',
+      name: 'Dashboard',
+      path: '/dashboard',
+      component: './Dashboard',
+      icon: 'DashboardOutlined',
+    },
+    {
+      name: '指标口径',
+      path: '/metric-glossary',
+      component: './MetricGlossary',
+      icon: 'ProfileOutlined',
+    },
+    {
+      name: 'DataDiscuss',
+      path: '/data-discuss',
+      component: './DataDiscuss',
       icon: 'ExperimentOutlined',
     },
-
     {
       name: 'DataSource',
       path: '/datasource',
       component: './DataSource',
       icon: 'DatabaseOutlined',
+    },
+    {
+      name: 'RagSource',
+      path: '/rag-source',
+      component: './RagSource',
+      icon: 'BookOutlined',
+    },
+    {
+      name: 'LLMSource',
+      path: '/llm-source',
+      component: './LLMSource',
+      icon: 'RobotOutlined',
+    },
+    {
+      name: 'Agent编排',
+      path: '/agent-builder',
+      component: './AgentBuilder',
+      icon: 'DeploymentUnitOutlined',
     },
     {
       path: '/datasource/new',

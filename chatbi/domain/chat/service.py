@@ -7,12 +7,15 @@ the repository pattern.
 """
 
 import json
+import os
 from functools import wraps
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
 
 import orjson
 import pandas as pd
+import dspy
 from fastapi import HTTPException, Request, status
 from loguru import logger
 from sqlalchemy import text
@@ -33,6 +36,9 @@ from chatbi.domain.chat.repository import (
     ChatRepository,
 )
 from chatbi.domain.datasource.repository import DatasourceRepository
+from chatbi.domain.ai_config.service import AIConfigService
+from chatbi.domain.agent_builder.service import AgentBuilderService
+from chatbi.agent.langchain_orchestrator import SmartBILangChainOrchestrator
 from chatbi.domain.diagnosis.repository import CorrectionLogRepository, DiagnosisRepository
 from chatbi.domain.diagnosis.entities import DiagnosisResult
 from chatbi.domain.diagnosis.dtos import InsightSummary
@@ -151,6 +157,102 @@ class ChatService:
         self.visualize_agent = VisualizeAgent()
         self.diagnosis_agent = DiagnosisAgent()
         self.intent_agent = IntentClassificationAgent()
+        self.ai_config_service = AIConfigService()
+        self.agent_builder_service = AgentBuilderService()
+        self.lc_orchestrator = SmartBILangChainOrchestrator()
+
+    def _configure_runtime_llm(
+        self, scene: str, llm_source_id: Optional[str]
+    ) -> tuple[Optional[dict[str, Any]], str]:
+        llm_source = self.ai_config_service.resolve_llm_source(
+            scene=scene, llm_source_id=llm_source_id
+        )
+        scene_prompt = self.ai_config_service.get_scene_prompt(scene=scene)
+
+        if not llm_source:
+            return None, scene_prompt
+
+        base_url = llm_source.get("base_url")
+        model = llm_source.get("model")
+        api_key = llm_source.get("api_key") or "ollama"
+
+        if base_url:
+            os.environ["LLM_BASE_URL"] = base_url
+        if model:
+            os.environ["LLM_MODEL"] = model
+        os.environ["LLM_API_KEY"] = api_key
+        os.environ["OLLAMA_BASE_URL"] = base_url.replace("/v1", "") if base_url else os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+        try:
+            activation = self.ai_config_service.activate_specific_model(model)
+            active_model = activation.get("active_model")
+            if active_model:
+                model = active_model
+                os.environ["LLM_MODEL"] = active_model
+        except Exception as e:
+            logger.warning(f"Failed to activate runtime model '{model}': {e}")
+
+        try:
+            dspy.configure(
+                lm=dspy.LM(
+                    model=f"openai/{model}",
+                    api_key=api_key,
+                    api_base=base_url,
+                ),
+                suppress_debug_info=True,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to apply runtime llm config: {e}")
+
+        return llm_source, scene_prompt
+
+    @staticmethod
+    def _merge_scene_prompt(question: str, scene_prompt: str) -> str:
+        if not scene_prompt:
+            return question
+        return f"[业务场景提示]\\n{scene_prompt}\\n\\n[用户问题]\\n{question}"
+
+    def _resolve_agent_prompt(self, scene: str, profile_id: Optional[str] = None) -> str:
+        profiles = self.agent_builder_service.list_profiles()
+        if profile_id:
+            for p in profiles:
+                if p.get("id") == profile_id:
+                    return p.get("system_prompt", "")
+        for p in profiles:
+            if p.get("scene") == scene:
+                return p.get("system_prompt", "")
+        return ""
+
+    def _resolve_agent_profile(self, scene: str, profile_id: Optional[str] = None) -> Optional[dict[str, Any]]:
+        if profile_id:
+            profile = self.agent_builder_service.get_profile(profile_id)
+            if profile:
+                return profile
+        profiles = self.agent_builder_service.list_profiles()
+        for p in profiles:
+            if p.get("scene") == scene:
+                return p
+        return profiles[0] if profiles else None
+
+    def _log_agent_step(
+        self,
+        profile_id: Optional[str],
+        step: str,
+        status: str,
+        detail: str = "",
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> None:
+        if not profile_id:
+            return
+        self.agent_builder_service.append_execution_log(
+            profile_id=profile_id,
+            log={
+                "timestamp": datetime.utcnow().isoformat(),
+                "step": step,
+                "status": status,
+                "detail": detail,
+                "metadata": metadata or {},
+            },
+        )
 
     def set_cache(self, id: str, value: str = "test") -> str:
         """
@@ -278,48 +380,21 @@ class ChatService:
 
                 for ds in datasources:
                     try:
-                        # Convert config to ConnectionInfo
+                        # Read connection info directly from datasource config.
                         conn_info_dict = getattr(ds, "connection_info", getattr(ds, "config", {}))
 
                         if not conn_info_dict:
                             continue
 
-                        # Convert all values to string for SecretStr compatibility
-                        conn_info_dict = {k: str(v) for k, v in conn_info_dict.items()}
-
-                        conn_info = None
-                        ds_type = ds.type.lower() if ds.type else ""
-
-                        if ds_type == 'postgres':
-                            conn_info = PostgresConnectionInfo(**conn_info_dict)
-                        elif ds_type == 'mysql':
-                            conn_info = MySqlConnectionInfo(**conn_info_dict)
-                        elif ds_type == 'duckdb':
-                            conn_info = DuckDbConnectionInfo(**conn_info_dict)
-                        elif ds_type == 'mssql':
-                            conn_info = MSSqlConnectionInfo(**conn_info_dict)
-                        elif ds_type == 'snowflake':
-                            conn_info = SnowflakeConnectionInfo(**conn_info_dict)
-                        elif ds_type == 'bigquery':
-                            conn_info = BigQueryConnectionInfo(**conn_info_dict)
-                        elif ds_type == 'clickhouse':
-                            conn_info = ClickHouseConnectionInfo(**conn_info_dict)
-                        elif ds_type == 'trino':
-                            conn_info = TrinoConnectionInfo(**conn_info_dict)
-                        elif 'url' in conn_info_dict or 'connectionUrl' in conn_info_dict:
-                            conn_info = ConnectionUrl(**conn_info_dict)
-                        
-                        if not conn_info:
-                            logger.warning(f"Could not create ConnectionInfo for datasource type: {ds.type}")
-                            continue
-
                         db_type = DatabaseType(ds.type)
 
                         # Fetch schema metadata
-                        meta = await ConnectionManager.get_schema_metadata(db_type, conn_info)
+                        meta = await ConnectionManager.get_schema_metadata(db_type, conn_info_dict)
 
                         if meta and "tables" in meta:
                             tables = meta["tables"]
+                            if isinstance(tables, dict):
+                                tables = list(tables.values())
                             logger.debug(f"Fetched {len(tables)} tables from datasource {ds.name}")
                             schemas.extend(tables)
                     except Exception as e:
@@ -361,19 +436,82 @@ class ChatService:
             question = dto.question
             table_schema = dto.table_schema
             response = {}
+            if dto.datasource_id:
+                self.cache.set(id, "datasource_id", dto.datasource_id)
+            agent_profile = self._resolve_agent_profile(dto.scene, dto.agent_profile_id)
+            tool_enable_sql = bool(agent_profile.get("enable_sql_tool", True)) if agent_profile else True
+            tool_enable_rag = bool(agent_profile.get("enable_rag", True)) if agent_profile else True
+            tool_enable_rule_validation = bool(agent_profile.get("enable_rule_validation", True)) if agent_profile else True
+            active_profile_id = agent_profile.get("id") if agent_profile else None
+            llm_source, scene_prompt = self._configure_runtime_llm(
+                dto.scene, dto.llm_source_id
+            )
+            agent_prompt = self._resolve_agent_prompt(dto.scene, active_profile_id)
+            rag_context = ""
+            if tool_enable_rag:
+                rag_context = self.ai_config_service.retrieve_rag_context(query=question, top_k=4)
+                # RAG retrieval may switch runtime to embedding model; switch back to chat model.
+                try:
+                    if llm_source and llm_source.get("model"):
+                        self.ai_config_service.activate_specific_model(llm_source["model"])
+                except Exception as e:
+                    logger.warning(f"Failed to switch runtime model back to chat after RAG: {e}")
+                self._log_agent_step(
+                    profile_id=active_profile_id,
+                    step="rag_retrieve",
+                    status="success",
+                    detail="RAG context retrieved",
+                    metadata={"length": len(rag_context)},
+                )
+            else:
+                self._log_agent_step(
+                    profile_id=active_profile_id,
+                    step="rag_retrieve",
+                    status="skipped",
+                    detail="RAG tool disabled",
+                )
+            question_for_llm = self.lc_orchestrator.build_analysis_input(
+                question=question,
+                scene_prompt=scene_prompt,
+                rag_context=rag_context,
+                agent_prompt=agent_prompt,
+            )
+            self._log_agent_step(
+                profile_id=active_profile_id,
+                step="build_context",
+                status="success",
+                detail="Scene/Agent/RAG context composed",
+                metadata={
+                    "scene": dto.scene,
+                    "sql_tool": tool_enable_sql,
+                    "rule_validation": tool_enable_rule_validation,
+                },
+            )
 
             repo = self.repo
             
             # Step 0: Intent Classification
             try:
-                intent_msg = await self.intent_agent.replay(question=question)
+                intent_msg = await self.intent_agent.replay(question=question_for_llm)
                 intent = intent_msg.intent
                 logger.info(f"Detected intent: {intent}")
                 response["intent"] = intent
+                self._log_agent_step(
+                    profile_id=active_profile_id,
+                    step="intent_classification",
+                    status="success",
+                    detail=f"intent={intent}",
+                )
                 
                 if intent == "clarification":
                     logger.info(f"Ambiguity detected, returning clarification request")
-                    response["metadata"] = intent_msg.metadata
+                    response["metadata"] = {
+                        **(intent_msg.metadata or {}),
+                        "scene": dto.scene,
+                        "llm_source": llm_source,
+                        "agent_profile": agent_profile,
+                        "rag_context": rag_context[:1000] if rag_context else "",
+                    }
                     # We can choose to return immediately or populate fields with defaults
                     # For now, we return, because we can't generate SQL sensibly.
                     # But we maintain the shape of ChatAnalysisResponse
@@ -386,22 +524,48 @@ class ChatService:
                         "data": None,
                         "should_visualize": False,
                         "visualize_config": None,
-                        "metadata": intent_msg.metadata
+                        "metadata": response["metadata"],
                     }
             except Exception as e:
                 logger.error(f"Intent classification failed: {e}")
                 # Fallback to query if failed
                 response["intent"] = "query"
+                self._log_agent_step(
+                    profile_id=active_profile_id,
+                    step="intent_classification",
+                    status="error",
+                    detail=str(e),
+                )
+
+            if not tool_enable_sql:
+                self._log_agent_step(
+                    profile_id=active_profile_id,
+                    step="sql_generation",
+                    status="skipped",
+                    detail="SQL tool disabled by agent profile",
+                )
+                return {
+                    "intent": response.get("intent", "query"),
+                    "table_schema": None,
+                    "sql": None,
+                    "data": None,
+                    "should_visualize": False,
+                    "visualize_config": None,
+                    "metadata": {
+                        "agent_profile": agent_profile,
+                        "message": "当前Agent已关闭SQL工具，请在 Agent建设 页面开启 SQL工具 后重试。",
+                    },
+                }
 
             # Step 1: Get table schema if not provided
             if table_schema is None:
-                all_table_schema = await self.get_table_schema()
+                all_table_schema = await self.get_table_schema(dto.datasource_id)
                 logger.debug(f"Retrieved all_table_schema type: {type(all_table_schema)}, length: {len(all_table_schema) if isinstance(all_table_schema, (list, str)) else 'N/A'}")
 
                 # Retrieve relevant table schemas using SchemaAgent
                 schema_response = self.schema_agent.reply(
                     id=id,
-                    question=question,
+                    question=question_for_llm,
                     table_schema=all_table_schema,
                 )
                 table_schema = schema_response.answer
@@ -414,6 +578,15 @@ class ChatService:
                 
                 # Store the list version for response
                 response["table_schema"] = table_schema
+                self._log_agent_step(
+                    profile_id=active_profile_id,
+                    step="schema_retrieval",
+                    status="success",
+                    detail="Schema retrieved",
+                    metadata={
+                        "table_count": len(table_schema) if isinstance(table_schema, list) else 0
+                    },
+                )
 
             logger.debug(f"Final table schema type: {type(table_schema)}")
             
@@ -437,9 +610,20 @@ class ChatService:
 
             # Step 2: Generate SQL from question
             generate_sql_result = await self.generate_sql(
-                request=request, id=id, question=question, table_schema=table_schema
+                request=request,
+                id=id,
+                question=question_for_llm,
+                table_schema=table_schema,
+                scene_prompt=scene_prompt,
             )
             sql = generate_sql_result.answer
+            self._log_agent_step(
+                profile_id=active_profile_id,
+                step="sql_generation",
+                status="success",
+                detail="SQL generated",
+                metadata={"sql_preview": str(sql)[:200]},
+            )
 
             # Additional cleaning in case the agent returned markdown
             if "```" in sql:
@@ -448,48 +632,68 @@ class ChatService:
             logger.debug(f"Generated SQL: {sql}")
             response["sql"] = sql
 
-            # Validate SQL - reject if it contains failure messages or invalid formats
-            sql_stripped = sql.strip()
-            sql_upper = sql_stripped.upper()
-            
-            # Check for failure indicators
-            failure_indicators = [
-                "无法生成", "UNABLE TO", "CANNOT GENERATE", "INSUFFICIENT",
-                "CAN'T GENERATE", "NOT ENOUGH", "MISSING"
-            ]
-            if any(indicator in sql_upper for indicator in failure_indicators):
-                logger.warning(f"SQL agent returned failure message: {sql}")
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Unable to generate SQL query. The AI model indicated insufficient context or unclear question. Please provide more details or rephrase your question."
+            if tool_enable_rule_validation:
+                # Validate SQL - reject if it contains failure messages or invalid formats
+                sql_stripped = sql.strip()
+                sql_upper = sql_stripped.upper()
+                
+                # Check for failure indicators
+                failure_indicators = [
+                    "无法生成", "UNABLE TO", "CANNOT GENERATE", "INSUFFICIENT",
+                    "CAN'T GENERATE", "NOT ENOUGH", "MISSING"
+                ]
+                if any(indicator in sql_upper for indicator in failure_indicators):
+                    logger.warning(f"SQL agent returned failure message: {sql}")
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="Unable to generate SQL query. The AI model indicated insufficient context or unclear question. Please provide more details or rephrase your question."
+                    )
+                
+                # Remove leading comments and check for valid SQL
+                sql_no_comments = sql_stripped
+                while sql_no_comments.startswith("--"):
+                    lines = sql_no_comments.split("\n", 1)
+                    if len(lines) > 1:
+                        sql_no_comments = lines[1].strip()
+                    else:
+                        sql_no_comments = ""
+                        break
+                
+                # Allow common SQL starting keywords
+                valid_starters = ("SELECT", "WITH", "SHOW", "DESC", "EXPLAIN", "VALUES", "INSERT", "UPDATE", "DELETE")
+                if not sql_no_comments or not sql_no_comments.upper().startswith(valid_starters):
+                    logger.warning(f"Invalid SQL generated: {sql}")
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="Failed to generate valid SQL query. Please ensure your question is clear and relates to the available data."
+                    )
+                
+                # Use the cleaned SQL without leading comments
+                sql = sql_no_comments
+                self._log_agent_step(
+                    profile_id=active_profile_id,
+                    step="rule_validation",
+                    status="success",
+                    detail="SQL rule validation passed",
                 )
-            
-            # Remove leading comments and check for valid SQL
-            sql_no_comments = sql_stripped
-            while sql_no_comments.startswith("--"):
-                lines = sql_no_comments.split("\n", 1)
-                if len(lines) > 1:
-                    sql_no_comments = lines[1].strip()
-                else:
-                    sql_no_comments = ""
-                    break
-            
-            # Allow common SQL starting keywords
-            valid_starters = ("SELECT", "WITH", "SHOW", "DESC", "EXPLAIN", "VALUES", "INSERT", "UPDATE", "DELETE")
-            if not sql_no_comments or not sql_no_comments.upper().startswith(valid_starters):
-                logger.warning(f"Invalid SQL generated: {sql}")
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Failed to generate valid SQL query. Please ensure your question is clear and relates to the available data."
+            else:
+                self._log_agent_step(
+                    profile_id=active_profile_id,
+                    step="rule_validation",
+                    status="skipped",
+                    detail="Rule validation tool disabled",
                 )
-            
-            # Use the cleaned SQL without leading comments
-            sql = sql_no_comments
 
             # Step 3: Run the generated SQL (limit to 20 rows for frontend performance)
             run_sql_result = await self.run_sql(request=request, id=id, sql=sql, max_rows=20)
             response["data"] = run_sql_result.data
             response["should_visualize"] = run_sql_result.should_visualize
+            self._log_agent_step(
+                profile_id=active_profile_id,
+                step="sql_execution",
+                status="success",
+                detail="SQL executed",
+            )
 
             # Use executed_sql for visualization if it changed
             if run_sql_result.executed_sql:
@@ -510,7 +714,7 @@ class ChatService:
 
                 visualize_agent_result = self.visualize_agent.reply(
                     id=id, 
-                    question=question, 
+                    question=question_for_llm,
                     sql=sql, 
                     table_schema=table_schema,
                     data=data_sample
@@ -540,6 +744,8 @@ class ChatService:
                 self.cache.set(id, "question", question)
                 self.cache.set(id, "table_schema", table_schema)
                 self.cache.set(id, "sql", sql)
+                if dto.datasource_id:
+                    self.cache.set(id, "datasource_id", dto.datasource_id)
             
             # Record analysis metrics and history
             try:
@@ -560,6 +766,12 @@ class ChatService:
 
         except Exception as e:
             logger.error(f"Error in analysis: {e!s}")
+            self._log_agent_step(
+                profile_id=dto.agent_profile_id,
+                step="analysis",
+                status="error",
+                detail=str(e),
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Analysis failed: {e!s}",
@@ -572,6 +784,7 @@ class ChatService:
         id: Optional[str],
         question: str,
         table_schema: Optional[Union[str, list]] = None,
+        scene_prompt: Optional[str] = None,
     ) -> CommonResponse:
         """
         Generate SQL query from natural language question.
@@ -627,6 +840,7 @@ class ChatService:
                 id=id,
                 question=question,
                 table_schema=table_schema_str,
+                system_prompt=scene_prompt,
             )
             logger.debug(f"SQL agent response type: {type(response)}, value: {response}")
             sql = response.answer
@@ -650,6 +864,7 @@ class ChatService:
                     "question": question,
                     "sql": sql,
                     "success": True,
+                    "scene": dto.scene,
                 }
                 await repo.save_chat_history(history_data)
             except Exception as e:
@@ -669,7 +884,8 @@ class ChatService:
         self, 
         sql: str, 
         timeout: int = 30, 
-        max_rows: int = 1000
+        max_rows: int = 1000,
+        datasource_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Internal method to execute SQL, serialize results, and handle basics.
@@ -685,16 +901,18 @@ class ChatService:
             else:
                 sql = f"{sql} LIMIT {max_rows};"
 
-        # Get all active datasources
-        datasources = await self.datasource_repo.get_all()
-        if not datasources or len(datasources) == 0:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No datasource found. Please configure a datasource first.",
-            )
+        datasource = None
+        if datasource_id:
+            datasource = await self.datasource_repo.get_by_id(datasource_id)
 
-        # Use the first active datasource
-        datasource = datasources[0]
+        if not datasource:
+            datasources = await self.datasource_repo.get_all()
+            if not datasources or len(datasources) == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="No datasource found. Please configure a datasource first.",
+                )
+            datasource = datasources[0]
         
         # Execute query using connection manager
         from chatbi.database.connection_manager import connection_manager
@@ -721,10 +939,13 @@ class ChatService:
         
         # Convert datetime objects to ISO format strings for JSON serialization
         def serialize_datetime(obj):
-            """Convert datetime and date objects to ISO format strings"""
+            """Convert non-JSON-native objects to serializable primitives."""
             from datetime import datetime, date
+            from decimal import Decimal
             if isinstance(obj, (datetime, date)):
                 return obj.isoformat()
+            if isinstance(obj, Decimal):
+                return float(obj)
             return obj
         
         # Process each row to convert datetime objects
@@ -768,6 +989,7 @@ class ChatService:
             # Retrieve context from cache for retry logic
             question = self.cache.get(id, "question") or "Unknown Question"
             table_schema = self.cache.get(id, "table_schema") or "[]"
+            datasource_id = self.cache.get(id, "datasource_id")
             if isinstance(table_schema, list):
                 table_schema = json.dumps(table_schema, ensure_ascii=False)
 
@@ -776,7 +998,8 @@ class ChatService:
                 return await self._execute_sql_core(
                     sql=query_sql, 
                     timeout=timeout or 30, 
-                    max_rows=max_rows or 1000
+                    max_rows=max_rows or 1000,
+                    datasource_id=datasource_id,
                 )
 
             # Local import to avoid circular dependency

@@ -12,6 +12,9 @@ type ChatStore = {
   autoVisualize: boolean;
   autoVizType: string;
   datasourceId: string | undefined;
+  llmSourceId: string | undefined;
+  agentProfileId: string | undefined;
+  scene: 'dashboard' | 'data_discuss';
 
   setMessages: (messages: Chat.IMessage[]) => void;
   setPrompt: (prompt: string) => void;
@@ -22,6 +25,9 @@ type ChatStore = {
   setAutoVizType: (autoVizType: string) => void;
   addMessage: (messages: Chat.IMessage[]) => void;
   setDatasourceId: (datasourceId: string | undefined) => void;
+  setLlmSourceId: (llmSourceId: string | undefined) => void;
+  setAgentProfileId: (agentProfileId: string | undefined) => void;
+  setScene: (scene: 'dashboard' | 'data_discuss') => void;
 };
 
 const useChatDbStore = create(
@@ -34,6 +40,9 @@ const useChatDbStore = create(
       visualizing: false,
       autoVizType: 'ava',
       datasourceId: undefined,
+      llmSourceId: undefined,
+      agentProfileId: undefined,
+      scene: 'data_discuss',
 
       setAutoVizType: (autoVizType: string) => {
         set(() => {
@@ -99,6 +108,15 @@ const useChatDbStore = create(
             datasourceId,
           };
         });
+      },
+      setLlmSourceId: (llmSourceId: string | undefined) => {
+        set(() => ({ llmSourceId }));
+      },
+      setAgentProfileId: (agentProfileId: string | undefined) => {
+        set(() => ({ agentProfileId }));
+      },
+      setScene: (scene: 'dashboard' | 'data_discuss') => {
+        set(() => ({ scene }));
       },
     }),
     {

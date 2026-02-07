@@ -31,7 +31,7 @@ from chatbi.middleware.standard_response import StandardResponseMiddleware
 #         pass
 
 app = FastAPI(
-    title="ChatBI",
+    title="SmartBI",
     description="A BI assistant powered by LLMs",
     version="0.1.0",
     docs_url="/api/docs",
@@ -98,7 +98,7 @@ add_error_handlers(app)
 @app.get("/", include_in_schema=False)
 async def root():
     """Root endpoint for application status."""
-    return {"status": "ok", "message": "ChatBI API is running"}
+    return {"status": "ok", "message": "SmartBI API is running"}
 
 
 @app.get("/api/health")

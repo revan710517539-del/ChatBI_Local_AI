@@ -132,7 +132,7 @@ const useChat = () => {
             indicator={<LoadingOutlined style={{ fontSize: 16 }} spin />}
           />
           <span style={{ color: token.colorTextSecondary, fontSize: 13 }}>
-            ChatBI is analyzing...
+            SmartBI is analyzing...
           </span>
         </Space>
       ),
@@ -162,6 +162,12 @@ const useChat = () => {
   const setPrompt = useChatStore((state) => state.setPrompt);
   const datasourceId = useChatStore((state) => state.datasourceId);
   const setDatasourceId = useChatStore((state) => state.setDatasourceId);
+  const llmSourceId = useChatStore((state) => state.llmSourceId);
+  const setLlmSourceId = useChatStore((state) => state.setLlmSourceId);
+  const agentProfileId = useChatStore((state) => state.agentProfileId);
+  const setAgentProfileId = useChatStore((state) => state.setAgentProfileId);
+  const scene = useChatStore((state) => state.scene);
+  const setScene = useChatStore((state) => state.setScene);
   const [loading, setLoading] = useState(false);
   const [sql, setSql] = useState('');
 
@@ -170,17 +176,29 @@ const useChat = () => {
   const [isCanVisualize, setIsCanVisualize] = useState(false);
   const [tableData, setTableData] = useState<Chat.IDataRow>([]);
   const [bubbleItems, setBubbleItems] = useState<BubbleItem[]>([]);
+  const buildMessageId = () =>
+    `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   async function generateSql(
     message: Chat.IChatMessage,
     onSuccess: (msg: Chat.IChatMessage) => void,
   ) {
     try {
+      if (!datasourceId) {
+        throw new Error('请先选择一个数据源后再发起分析。');
+      }
       log('analyze question:', message.content);
-      const res = await ChatService.analyze(message.content, datasourceId);
+      const res = await ChatService.analyze(
+        message.content,
+        datasourceId,
+        true,
+        scene,
+        llmSourceId,
+        agentProfileId,
+      );
       log('analyze response:', res);
 
-      const msgId = id || 'temp-' + Date.now();
+      const msgId = id || buildMessageId();
       setId(msgId);
 
       const analysisData = res.data;
@@ -302,7 +320,7 @@ const useChat = () => {
       } as Chat.IChatMessage;
 
       addMessage({
-        id: id,
+        id: id || buildMessageId(),
         message: errorMessage,
         status: 'error',
       });
@@ -385,7 +403,7 @@ const useChat = () => {
 
     // add message to store
     addMessage({
-      id: id,
+      id: id || buildMessageId(),
       message: {
         role: 'user',
         content: nextContent,
@@ -418,6 +436,12 @@ const useChat = () => {
 
     onPromptsItemClick,
     setDatasourceId,
+    llmSourceId,
+    setLlmSourceId,
+    agentProfileId,
+    setAgentProfileId,
+    scene,
+    setScene,
   };
 };
 

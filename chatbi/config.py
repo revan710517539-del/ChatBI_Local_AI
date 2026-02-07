@@ -195,7 +195,7 @@ class Config:
         self.env: str = os.getenv("ENV", "development")
         self.debug: bool = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")
         self.diagnose: bool = False
-        self.app_name: str = "ChatBI"
+        self.app_name: str = "SmartBI"
         self.version: str = "0.1.0"
 
         # Component configurations

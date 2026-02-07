@@ -8,13 +8,13 @@ import { GithubOutlined } from '@ant-design/icons';
 // 全局初始化数据配置，用于 Layout 用户信息和权限初始化
 // 更多信息见文档：https://umijs.org/docs/api/runtime-config#getinitialstate
 export async function getInitialState(): Promise<{ name: string }> {
-  return { name: 'ChatBI' };
+  return { name: 'SmartBI' };
 }
 
 // ProLayout 支持的api https://procomponents.ant.design/components/layout
 export const layout: RunTimeLayoutConfig = () => {
   return {
-    title: 'ChatBI',
+    title: 'SmartBI',
     logo: logo,
     layout: 'mix',
     splitMenus: false,
@@ -31,14 +31,15 @@ export const layout: RunTimeLayoutConfig = () => {
       return <>{children}</>;
     },
     contentStyle: {
-      height: '100vh',
+      minHeight: '100vh',
       padding: 0,
-      backgroundColor: '#fff',
+      background:
+        'radial-gradient(1200px 600px at 100% -5%, rgba(15,110,255,0.12), rgba(15,110,255,0) 60%), radial-gradient(800px 500px at 0% 0%, rgba(3,166,120,0.14), rgba(3,166,120,0) 55%), #f4f7fb',
     },
     token: {
-      bgLayout: '#fff',
+      bgLayout: 'transparent',
       pageContainer: {
-        colorBgPageContainer: '#fff',
+        colorBgPageContainer: 'transparent',
       },
     },
 
@@ -73,7 +74,7 @@ export const layout: RunTimeLayoutConfig = () => {
       }
       return (
         <div style={{ textAlign: 'center', padding: '16px 0', color: '#888' }}>
-          ChatBI ©{new Date().getFullYear()} Created with ❤️ by{' '}
+          SmartBI ©{new Date().getFullYear()} Loan Intelligence Platform by{' '}
           <a
             href="https://github.com/yugasun"
             target="_blank"

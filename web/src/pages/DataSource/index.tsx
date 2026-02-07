@@ -23,6 +23,7 @@ import {
 import { history } from '@umijs/max';
 import type { ProColumns } from '@ant-design/pro-components';
 import { getDatasources, deleteDatasource } from '@/services/datasource';
+import { aiConfigService } from '@/services/aiConfig';
 
 const { Text, Link } = Typography;
 
@@ -206,6 +207,26 @@ const DataSourcePage: React.FC = () => {
           labelWidth: 'auto',
         }}
         toolBarRender={() => [
+          <Button
+            key="quick-mysql"
+            onClick={async () => {
+              await aiConfigService.quickCreateMysqlDatasource();
+              message.success('MySQL数据源已一键创建');
+              refreshTable();
+            }}
+          >
+            Quick MySQL
+          </Button>,
+          <Button
+            key="quick-excel"
+            onClick={async () => {
+              await aiConfigService.quickCreateExcelDatasource();
+              message.success('Excel数据源已一键创建');
+              refreshTable();
+            }}
+          >
+            Quick Excel
+          </Button>,
           <Button
             key="add"
             type="primary"

@@ -176,6 +176,7 @@ class DuckDBAdapter(DatabaseAdapter):
 
     async def execute_query(
         self,
+        connection_info: ConnectionInfo,
         query: str,
         parameters: Optional[dict[str, Any]] = None,
         timeout: int = 30,
@@ -185,6 +186,7 @@ class DuckDBAdapter(DatabaseAdapter):
         Execute a query in the DuckDB database.
 
         Args:
+            connection_info: DuckDB connection parameters (unused, kept for interface compatibility)
             query: SQL query to execute
             parameters: Query parameters
             timeout: Query timeout in seconds
@@ -195,11 +197,14 @@ class DuckDBAdapter(DatabaseAdapter):
         """
         with self.get_connection() as conn:
             try:
-                # Set timeout
-                conn.execute(f"SET statement_timeout_ms={timeout * 1000}")
+                # Some DuckDB builds don't support statement_timeout_ms; ignore if unavailable.
+                try:
+                    conn.execute(f"SET statement_timeout_ms={timeout * 1000}")
+                except Exception:
+                    pass
 
                 # Prepare query parameters if provided
-                prepared_query = query
+                prepared_query = query.strip().rstrip(";")
                 if parameters:
                     # DuckDB uses $ for parameter placeholders
                     for param_name, param_value in parameters.items():
@@ -217,23 +222,24 @@ class DuckDBAdapter(DatabaseAdapter):
                     # Execute the query without parameters
                     result = conn.execute(prepared_query)
 
-                # Get column information
-                columns = []
-                for col_name in result.description:
-                    col_type = str(
-                        conn.execute(
-                            f"SELECT typeof({col_name}) FROM ({query}) LIMIT 1"
-                        ).fetchone()[0]
-                    )
-
-                    columns.append({"name": col_name, "type": col_type})
-
                 # Fetch rows with truncation detection
                 raw_rows = result.fetchmany(max_rows + 1)  # Get one extra row
                 truncated = len(raw_rows) > max_rows
 
-                # Format the rows
-                rows = [list(row) for row in raw_rows[:max_rows]]
+                # Get column information without running extra SQL on the same cursor.
+                columns = []
+                column_names: list[str] = []
+                for desc in result.description:
+                    col_name = desc[0] if isinstance(desc, tuple) else str(desc)
+                    col_type = str(desc[1]) if isinstance(desc, tuple) and len(desc) > 1 else "UNKNOWN"
+                    column_names.append(col_name)
+                    columns.append({"name": col_name, "type": col_type})
+
+                # Format rows as dicts keyed by column name for cross-adapter consistency.
+                rows = [
+                    {column_names[i]: row[i] for i in range(len(column_names))}
+                    for row in raw_rows[:max_rows]
+                ]
 
                 return QueryResult(
                     columns=columns, rows=rows, truncated=truncated, error=None

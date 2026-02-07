@@ -1,10 +1,25 @@
 import type { components } from '../api-schema';
 import { client } from '../client';
 
+const unwrapError = (error: any, fallback: string) => {
+  return (
+    error?.message ||
+    error?.detail ||
+    error?.error ||
+    error?.data?.message ||
+    error?.data?.detail ||
+    error?.response?.message ||
+    fallback
+  );
+};
+
 export async function analyze(
   question: string,
   datasourceId?: string,
   visualize = true,
+  scene: 'dashboard' | 'data_discuss' = 'data_discuss',
+  llmSourceId?: string,
+  agentProfileId?: string,
 ) {
   const {
     data, // only present if 2XX response
@@ -14,11 +29,14 @@ export async function analyze(
       question,
       visualize,
       datasource_id: datasourceId,
+      scene,
+      llm_source_id: llmSourceId,
+      agent_profile_id: agentProfileId,
     },
   });
 
   if (error) {
-    throw new Error((error as any)?.message || 'Failed to analyze question');
+    throw new Error(unwrapError(error, 'Failed to analyze question'));
   }
 
   return data;
@@ -36,7 +54,7 @@ export async function generateSql(question: string, visualize = false) {
   });
 
   if (error) {
-    throw new Error((error as any)?.message || 'Failed to generate SQL');
+    throw new Error(unwrapError(error, 'Failed to generate SQL'));
   }
 
   return data;
@@ -61,7 +79,7 @@ export async function runSql(
   });
 
   if (error) {
-    throw new Error((error as any)?.message || 'Failed to execute SQL query');
+    throw new Error(unwrapError(error, 'Failed to execute SQL query'));
   }
 
   return data;
