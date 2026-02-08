@@ -59,6 +59,15 @@ const HomePage: React.FC = () => {
           <Button size="large" onClick={() => history.push('/llm-source')}>
             配置模型与RAG
           </Button>
+          <Button size="large" onClick={() => history.push('/customer-insights')}>
+            客户洞察
+          </Button>
+          <Button size="large" onClick={() => history.push('/market-watch')}>
+            市场观察
+          </Button>
+          <Button size="large" onClick={() => history.push('/strategy-attribution')}>
+            策略归因
+          </Button>
         </Space>
         <Text type="secondary" className={styles.dateText}>
           业务日：{heroDate}
@@ -103,8 +112,11 @@ const HomePage: React.FC = () => {
             <ul className={styles.list}>
               <li>1. 在 DataSource 一键创建本地 Excel/MySQL 数据源</li>
               <li>2. 在 LLMSource 配置 qwen3/minicpm/TableGPT2/bge-m3 能力映射</li>
-              <li>3. 在 Agent编排 开启 SQL/RAG/规则校验工具链</li>
-              <li>4. 在 Dashboard 与 DataDiscuss 按场景 Prompt 进行分析</li>
+              <li>3. 在 Agent编排 配置 A2A 规划规则、拆分任务与Agent分派</li>
+              <li>4. 在 MCP & Skills 配置审批邮件与外部协作通道</li>
+              <li>5. 在 市场观察 + 客户洞察 识别外部机会与客群变化</li>
+              <li>6. 在 策略归因 看板追踪A/B效果并做归因复盘</li>
+              <li>7. 在 Dashboard/DataDiscuss 形成策略并闭环运营</li>
             </ul>
           </Card>
         </Col>

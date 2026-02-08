@@ -1,3 +1,12 @@
+:root {
+  --smartbi-primary: #18b46b;
+  --smartbi-primary-soft: #eaf8f1;
+  --smartbi-text: #0f172a;
+  --smartbi-border: #e7edf2;
+  --smartbi-bg: #f4f7f8;
+  --smartbi-card-bg: rgba(255, 255, 255, 0.96);
+}
+
 #root {
   display: flex;
   flex-direction: column;
@@ -10,8 +19,8 @@
 
 body {
   margin: 0;
-  color: #0f172a;
-  background: #f4f7fb;
+  color: var(--smartbi-text);
+  background: var(--smartbi-bg);
   font-family:
     'Avenir Next',
     'SF Pro Display',
@@ -26,26 +35,124 @@ body {
 }
 
 .ant-pro-page-container-children-container {
-  padding: 20px 20px 24px !important;
+  padding: 18px 20px 24px !important;
 }
 
 .ant-pro-grid-content {
-  max-width: 1600px;
+  max-width: 1700px;
 }
 
 .ant-card {
-  border: 1px solid #e2e8f0 !important;
-  border-radius: 14px !important;
-  background: rgba(255, 255, 255, 0.92) !important;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08) !important;
+  border: 1px solid var(--smartbi-border) !important;
+  border-radius: 12px !important;
+  background: var(--smartbi-card-bg) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03) !important;
+}
+
+.ant-card-head {
+  border-bottom: 1px solid #eef2f6 !important;
+  min-height: 48px !important;
+}
+
+.ant-card-head-title {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.ant-btn {
+  border-radius: 8px;
 }
 
 .ant-btn-primary {
   border: none !important;
-  box-shadow: 0 8px 20px rgba(15, 110, 255, 0.28) !important;
-  background: linear-gradient(135deg, #0f6eff 0%, #15a6c0 100%) !important;
+  box-shadow: none !important;
+  background: linear-gradient(135deg, #18b46b 0%, #0fae8e 100%) !important;
+}
+
+.ant-btn-default {
+  border-color: #d9e4ea;
+}
+
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select-selector,
+.ant-picker,
+.ant-input-number {
+  border-radius: 8px !important;
+  border-color: #dde7ee !important;
 }
 
 .ant-table-wrapper .ant-table {
   background: transparent !important;
+}
+
+.ant-table-thead > tr > th {
+  background: #f7fafc !important;
+  border-bottom: 1px solid #e7edf2 !important;
+  color: #334155;
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid #eef3f7 !important;
+}
+
+.ant-alert {
+  border-radius: 10px;
+  border: 1px solid #deecf4;
+}
+
+.ant-pro-sider {
+  background: #ffffff !important;
+  border-right: 1px solid #e8eef3;
+}
+
+.ant-pro-sider-logo {
+  border-bottom: 1px solid #edf2f6;
+}
+
+.ant-menu-inline {
+  border-inline-end: none !important;
+}
+
+.ant-menu-item,
+.ant-menu-submenu-title {
+  border-radius: 8px !important;
+  margin: 4px 10px !important;
+  width: calc(100% - 20px) !important;
+}
+
+.ant-menu-item-selected {
+  background: var(--smartbi-primary-soft) !important;
+  color: var(--smartbi-primary) !important;
+  font-weight: 600;
+}
+
+.ant-menu-item-selected .anticon,
+.ant-menu-item-selected a {
+  color: var(--smartbi-primary) !important;
+}
+
+.ant-pro-global-header,
+.ant-pro-top-nav-header {
+  background: rgba(255, 255, 255, 0.78) !important;
+  border-bottom: 1px solid #e8eef3;
+  backdrop-filter: blur(8px);
+}
+
+.ant-statistic-title {
+  color: #64748b !important;
+}
+
+.ant-statistic-content-value {
+  font-weight: 700;
+}
+
+.smartbi-kpi-card {
+  border: 1px solid #e5eef2 !important;
+  background: #fbfdff !important;
+}
+
+.smartbi-kpi-card.active {
+  border-color: #7ad7a9 !important;
+  background: #f3fcf7 !important;
 }

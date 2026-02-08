@@ -206,6 +206,23 @@ const useChat = () => {
         throw new Error('No data returned');
       }
 
+      if ((analysisData as any).intent === 'fallback') {
+        const fallbackTip =
+          (analysisData as any)?.metadata?.message ||
+          '分析服务暂不可用，已切换为降级模式。';
+        const fallbackMsg = {
+          role: 'assistant',
+          content: `⚠️ **已切换降级分析模式**\n\n${fallbackTip}\n\n你可以：\n1. 重新提问\n2. 切换模型后重试\n3. 先查看 Dashboard 指标卡`,
+        } as Chat.IChatMessage;
+        addMessage({
+          id: msgId,
+          message: fallbackMsg,
+          status: 'success',
+        });
+        onSuccess(fallbackMsg);
+        return;
+      }
+
       // 0. Clarification
       if ((analysisData as any).intent === 'clarification') {
         const clarifyMsg = {
@@ -314,15 +331,15 @@ const useChat = () => {
       log('analyze error:', e);
       const errorMessage = {
         role: 'assistant',
-        content: `❌ **Error during analysis**\n\n${
+        content: `⚠️ **分析暂时未完成**\n\n${
           e instanceof Error ? e.message : 'Unknown error occurred'
-        }`,
+        }\n\n请稍后重试，或切换到本地可用模型后继续。`,
       } as Chat.IChatMessage;
 
       addMessage({
         id: id || buildMessageId(),
         message: errorMessage,
-        status: 'error',
+        status: 'success',
       });
       onSuccess(errorMessage);
     }

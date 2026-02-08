@@ -38,6 +38,9 @@ from chatbi.domain.chat.repository import (
 from chatbi.domain.datasource.repository import DatasourceRepository
 from chatbi.domain.ai_config.service import AIConfigService
 from chatbi.domain.agent_builder.service import AgentBuilderService
+from chatbi.domain.memory.service import MemoryService
+from chatbi.domain.memory.dtos import MemoryEventCreateDTO
+from chatbi.domain.planning.service import PlanningService
 from chatbi.agent.langchain_orchestrator import SmartBILangChainOrchestrator
 from chatbi.domain.diagnosis.repository import CorrectionLogRepository, DiagnosisRepository
 from chatbi.domain.diagnosis.entities import DiagnosisResult
@@ -159,6 +162,8 @@ class ChatService:
         self.intent_agent = IntentClassificationAgent()
         self.ai_config_service = AIConfigService()
         self.agent_builder_service = AgentBuilderService()
+        self.memory_service = MemoryService()
+        self.planning_service = PlanningService()
         self.lc_orchestrator = SmartBILangChainOrchestrator()
 
     def _configure_runtime_llm(
@@ -175,6 +180,9 @@ class ChatService:
         base_url = llm_source.get("base_url")
         model = llm_source.get("model")
         api_key = llm_source.get("api_key") or "ollama"
+        provider = str(llm_source.get("provider") or "").lower()
+        if provider == "ollama" or ("11434" in str(base_url or "")):
+            api_key = "ollama"
 
         if base_url:
             os.environ["LLM_BASE_URL"] = base_url
@@ -443,11 +451,48 @@ class ChatService:
             tool_enable_rag = bool(agent_profile.get("enable_rag", True)) if agent_profile else True
             tool_enable_rule_validation = bool(agent_profile.get("enable_rule_validation", True)) if agent_profile else True
             active_profile_id = agent_profile.get("id") if agent_profile else None
+            plan_result = None
+            try:
+                plan_result = self.planning_service.build_plan(
+                    question=question,
+                    scene=dto.scene,
+                )
+                self._log_agent_step(
+                    profile_id=active_profile_id,
+                    step="planning",
+                    status="success",
+                    detail="A2A planning generated",
+                    metadata={
+                        "plan_id": plan_result.get("plan_id"),
+                        "task_count": len(plan_result.get("tasks", [])),
+                    },
+                )
+            except Exception as plan_err:
+                logger.warning(f"Planning build failed: {plan_err}")
+                self._log_agent_step(
+                    profile_id=active_profile_id,
+                    step="planning",
+                    status="error",
+                    detail=str(plan_err),
+                )
             llm_source, scene_prompt = self._configure_runtime_llm(
                 dto.scene, dto.llm_source_id
             )
             agent_prompt = self._resolve_agent_prompt(dto.scene, active_profile_id)
             rag_context = ""
+            memory_context = self.memory_service.build_context(
+                query=question,
+                limit=6,
+                scene=dto.scene,
+            )
+            if memory_context:
+                self._log_agent_step(
+                    profile_id=active_profile_id,
+                    step="memory_retrieve",
+                    status="success",
+                    detail="Memory context retrieved",
+                    metadata={"length": len(memory_context)},
+                )
             if tool_enable_rag:
                 rag_context = self.ai_config_service.retrieve_rag_context(query=question, top_k=4)
                 # RAG retrieval may switch runtime to embedding model; switch back to chat model.
@@ -473,7 +518,11 @@ class ChatService:
             question_for_llm = self.lc_orchestrator.build_analysis_input(
                 question=question,
                 scene_prompt=scene_prompt,
-                rag_context=rag_context,
+                rag_context=(
+                    f"{rag_context}\n\n[用户交互记忆]\n{memory_context}"
+                    if memory_context
+                    else rag_context
+                ),
                 agent_prompt=agent_prompt,
             )
             self._log_agent_step(
@@ -510,6 +559,7 @@ class ChatService:
                         "scene": dto.scene,
                         "llm_source": llm_source,
                         "agent_profile": agent_profile,
+                        "planning": plan_result,
                         "rag_context": rag_context[:1000] if rag_context else "",
                     }
                     # We can choose to return immediately or populate fields with defaults
@@ -553,6 +603,7 @@ class ChatService:
                     "visualize_config": None,
                     "metadata": {
                         "agent_profile": agent_profile,
+                        "planning": plan_result,
                         "message": "当前Agent已关闭SQL工具，请在 Agent建设 页面开启 SQL工具 后重试。",
                     },
                 }
@@ -746,6 +797,54 @@ class ChatService:
                 self.cache.set(id, "sql", sql)
                 if dto.datasource_id:
                     self.cache.set(id, "datasource_id", dto.datasource_id)
+
+            try:
+                self.memory_service.record_event(
+                    MemoryEventCreateDTO(
+                        event_type="text_input",
+                        scene=dto.scene,
+                        user_text=question,
+                        metadata={
+                            "datasource_id": dto.datasource_id,
+                            "agent_profile_id": dto.agent_profile_id,
+                            "llm_source_id": dto.llm_source_id,
+                        },
+                    )
+                )
+                data_size = 0
+                if response.get("data"):
+                    try:
+                        data_size = len(json.loads(response.get("data") or "[]"))
+                    except Exception:
+                        data_size = 0
+                self.memory_service.record_event(
+                    MemoryEventCreateDTO(
+                        event_type="analysis_result",
+                        scene=dto.scene,
+                        user_text=question,
+                        intent=response.get("intent"),
+                        sql=response.get("executed_sql") or response.get("sql"),
+                        result_summary=(
+                            (response.get("insight") or {}).get("summary")
+                            if isinstance(response.get("insight"), dict)
+                            else ""
+                        ),
+                        metadata={
+                            "should_visualize": response.get("should_visualize"),
+                            "data_size": data_size,
+                        },
+                    )
+                )
+            except Exception as mem_err:
+                logger.warning(f"Record memory failed: {mem_err}")
+
+            response["metadata"] = {
+                **(response.get("metadata") or {}),
+                "planning": plan_result,
+                "scene": dto.scene,
+                "agent_profile": agent_profile,
+                "llm_source": llm_source,
+            }
             
             # Record analysis metrics and history
             try:
@@ -772,10 +871,23 @@ class ChatService:
                 status="error",
                 detail=str(e),
             )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Analysis failed: {e!s}",
-            )
+            # Graceful fallback: return structured response so frontend can
+            # continue rendering instead of showing a hard error block.
+            return {
+                "table_schema": None,
+                "sql": None,
+                "data": "[]",
+                "should_visualize": False,
+                "visualize_config": None,
+                "executed_sql": None,
+                "insight": None,
+                "intent": "fallback",
+                "metadata": {
+                    "fallback": True,
+                    "reason": str(e),
+                    "message": "分析链路异常，已返回降级结果。请检查模型状态或重试。",
+                },
+            }
 
     @transactional
     async def generate_sql(

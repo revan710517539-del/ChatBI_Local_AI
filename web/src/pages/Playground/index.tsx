@@ -3,9 +3,11 @@ import { createStyles } from 'antd-style';
 import React, { useEffect, useMemo, useState } from 'react';
 
 import {
+  AudioOutlined,
   CloudUploadOutlined,
   EllipsisOutlined,
   FireOutlined,
+  StopOutlined,
   PaperClipOutlined,
   VerticalAlignBottomOutlined,
   DatabaseOutlined,
@@ -17,6 +19,7 @@ import { logger } from '@/utils/logger';
 import { datasourceService, type DatasourceType } from '@/services/datasource';
 import { aiConfigService, type LLMSource, type SceneType } from '@/services/aiConfig';
 import { agentBuilderService } from '@/services/agentBuilder';
+import { memoryService } from '@/services/memory';
 
 const log = logger.extend('copilot:playground');
 
@@ -33,7 +36,7 @@ const useStyle = createStyles(({ token, css }) => {
         radial-gradient(circle at -10% 130%, rgba(3, 166, 120, 0.14), transparent 40%),
         rgba(255, 255, 255, 0.88);
       border: 1px solid ${token.colorBorderSecondary};
-      box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
       font-family: ${token.fontFamily};
 
       .ant-prompts {
@@ -119,12 +122,12 @@ const useStyle = createStyles(({ token, css }) => {
       &:hover {
         border-color: ${token.colorPrimary};
         transform: translateY(-2px);
-        box-shadow: ${token.boxShadow};
+        box-shadow: ${token.boxShadowSecondary};
         background: ${token.colorBgContainer};
       }
     `,
     sender: css`
-      box-shadow: ${token.boxShadowSecondary};
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
       border-radius: 20px;
       background: ${token.colorBgElevated};
       padding: 8px 12px;
@@ -133,7 +136,7 @@ const useStyle = createStyles(({ token, css }) => {
 
       &:focus-within {
         border-color: ${token.colorPrimary};
-        box-shadow: ${token.boxShadow};
+        box-shadow: 0 0 0 2px rgba(15, 110, 255, 0.12);
         background: ${token.colorBgContainer};
       }
     `,
@@ -155,7 +158,7 @@ const useStyle = createStyles(({ token, css }) => {
       border: 1px solid ${token.colorBorderSecondary};
       border-radius: 14px;
       background: ${token.colorBgContainer};
-      box-shadow: ${token.boxShadowSecondary};
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 
       .ant-prompts {
         flex: 1;
@@ -320,12 +323,6 @@ const Playground: React.FC<PlaygroundProps> = ({
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  const handleSubmit = (nextContent: string) => {
-    onSubmit(nextContent);
-    // Keep the input visible and scroll the latest reply into view.
-    requestAnimationFrame(() => scrollToBottom('smooth'));
-  };
-
   // ==================== State ====================
   const senderPromptsItems = useMemo(
     () =>
@@ -342,9 +339,135 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [attachedFiles, setAttachedFiles] = React.useState<
     GetProp<typeof Attachments, 'items'>
   >([]);
+  const [isListening, setIsListening] = React.useState(false);
+  const [enriching, setEnriching] = React.useState(false);
+  const recognitionRef = React.useRef<any>(null);
 
   const handleFileChange: GetProp<typeof Attachments, 'onChange'> = (info) =>
     setAttachedFiles(info.fileList);
+
+  const toggleVoiceInput = () => {
+    const SR =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      log('SpeechRecognition not supported');
+      return;
+    }
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+      return;
+    }
+    const recognition = new SR();
+    recognition.lang = 'zh-CN';
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.onresult = async (event: any) => {
+      const last = event.results[event.results.length - 1];
+      const transcript = String(last?.[0]?.transcript || '').trim();
+      if (!transcript) return;
+      setPrompt((prev) => `${prev ? `${prev} ` : ''}${transcript}`);
+      try {
+        await memoryService.recordEvent({
+          event_type: 'voice_input',
+          scene,
+          voice_text: transcript,
+          metadata: { source: 'web_speech_api' },
+        });
+      } catch (e) {
+        log('record voice memory failed', e);
+      }
+    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+    recognition.start();
+    recognitionRef.current = recognition;
+    setIsListening(true);
+  };
+
+  const enrichQuestionWithAttachments = async (rawQuestion: string) => {
+    if (!attachedFiles?.length) return rawQuestion;
+    const contexts: string[] = [];
+    const files: string[] = [];
+    const images: string[] = [];
+
+    for (const item of attachedFiles as any[]) {
+      const file = item?.originFileObj || item?.file || item;
+      if (!(file instanceof File)) continue;
+      files.push(file.name);
+      if (file.type?.startsWith('image/')) {
+        images.push(file.name);
+        try {
+          const vision = await aiConfigService.analyzeVision(
+            '提取图中的贷款业务指标、口径或风险信息，输出精简结论。',
+            file,
+          );
+          if (vision?.answer) {
+            contexts.push(`[图片:${file.name}] ${String(vision.answer).slice(0, 1200)}`);
+          }
+        } catch (e) {
+          contexts.push(`[图片:${file.name}] 解析失败: ${String(e)}`);
+        }
+        continue;
+      }
+
+      const textLike =
+        file.type?.includes('text') ||
+        file.name.endsWith('.txt') ||
+        file.name.endsWith('.csv') ||
+        file.name.endsWith('.md') ||
+        file.name.endsWith('.json');
+      if (textLike) {
+        try {
+          const t = await file.text();
+          contexts.push(`[文件:${file.name}]\\n${t.slice(0, 2200)}`);
+        } catch (e) {
+          contexts.push(`[文件:${file.name}] 读取失败: ${String(e)}`);
+        }
+      } else {
+        contexts.push(`[文件:${file.name}] 非文本文件，已上传。`);
+      }
+    }
+
+    if (files.length) {
+      memoryService
+        .recordEvent({
+          event_type: 'file_upload',
+          scene,
+          files,
+          metadata: { count: files.length },
+        })
+        .catch(() => undefined);
+    }
+    if (images.length) {
+      memoryService
+        .recordEvent({
+          event_type: 'image_upload',
+          scene,
+          images,
+          metadata: { count: images.length },
+        })
+        .catch(() => undefined);
+    }
+
+    if (!contexts.length) return rawQuestion;
+    return `${rawQuestion}\\n\\n[用户上传资料补充]\\n${contexts.join('\\n\\n')}`;
+  };
+
+  const handleSubmit = async (nextContent: string) => {
+    const content = nextContent?.trim();
+    if (!content) return;
+    setEnriching(true);
+    try {
+      const enriched = await enrichQuestionWithAttachments(content);
+      onSubmit(enriched);
+      setAttachedFiles([]);
+      setHeaderOpen(false);
+      requestAnimationFrame(() => scrollToBottom('smooth'));
+    } finally {
+      setEnriching(false);
+    }
+  };
 
   const attachmentsNode = (
     <Badge dot={attachedFiles.length > 0 && !headerOpen}>
@@ -458,6 +581,14 @@ const Playground: React.FC<PlaygroundProps> = ({
               )}
 
               <div className={styles.senderToolbarActions}>
+                <Button
+                  onClick={toggleVoiceInput}
+                  type={isListening ? 'primary' : 'text'}
+                  size="small"
+                  icon={isListening ? <StopOutlined /> : <AudioOutlined />}
+                >
+                  {isListening ? '停止语音' : '语音输入'}
+                </Button>
                 <Select
                   size="small"
                   style={{ width: 200 }}
@@ -511,10 +642,10 @@ const Playground: React.FC<PlaygroundProps> = ({
             onSubmit={handleSubmit}
             onChange={setPrompt}
             prefix={attachmentsNode}
-            loading={loading}
-            disabled={loading}
+            loading={loading || enriching}
+            disabled={loading || enriching}
             placeholder={
-              loading
+              loading || enriching
                 ? '模型推理中，请稍候...'
                 : '输入分析问题，例如：经营贷近30天逾期率变化及原因'
             }

@@ -135,10 +135,18 @@ class AIConfigService:
                 resolved = dict(src)
                 if resolved.get("model"):
                     resolved["model"] = self.runtime.resolve_model_name(str(resolved["model"]))
+                base_url = str(resolved.get("base_url") or "")
+                provider = str(resolved.get("provider") or "").lower()
+                if provider == "ollama" or "127.0.0.1:11434" in base_url or "localhost:11434" in base_url:
+                    resolved["api_key"] = "ollama"
                 return resolved
         fallback = dict(sources[0])
         if fallback.get("model"):
             fallback["model"] = self.runtime.resolve_model_name(str(fallback["model"]))
+        base_url = str(fallback.get("base_url") or "")
+        provider = str(fallback.get("provider") or "").lower()
+        if provider == "ollama" or "127.0.0.1:11434" in base_url or "localhost:11434" in base_url:
+            fallback["api_key"] = "ollama"
         return fallback
 
     def get_model_capabilities(self) -> dict[str, str]:

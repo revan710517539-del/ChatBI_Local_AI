@@ -16,7 +16,7 @@ export const layout: RunTimeLayoutConfig = () => {
   return {
     title: 'SmartBI',
     logo: logo,
-    layout: 'mix',
+    layout: 'side',
     splitMenus: false,
     onPageChange: () => {
       // 如果是登录页面，不执行
@@ -34,10 +34,11 @@ export const layout: RunTimeLayoutConfig = () => {
       minHeight: '100vh',
       padding: 0,
       background:
-        'radial-gradient(1200px 600px at 100% -5%, rgba(15,110,255,0.12), rgba(15,110,255,0) 60%), radial-gradient(800px 500px at 0% 0%, rgba(3,166,120,0.14), rgba(3,166,120,0) 55%), #f4f7fb',
+        'radial-gradient(1200px 650px at 100% -8%, rgba(24,180,107,0.12), rgba(24,180,107,0) 62%), radial-gradient(860px 560px at 0% 0%, rgba(15,110,255,0.08), rgba(15,110,255,0) 58%), #f4f7f8',
     },
     token: {
       bgLayout: 'transparent',
+      colorPrimary: '#18b46b',
       pageContainer: {
         colorBgPageContainer: 'transparent',
       },
