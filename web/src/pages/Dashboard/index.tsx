@@ -62,7 +62,6 @@ const MetricGrid: React.FC<{ title: string; items: any[]; loading: boolean }> = 
               <Card
                 size="small"
                 className={`smartbi-kpi-card ${idx === 0 ? 'active' : ''}`}
-                bordered
               >
                 <Statistic
                   title={m.name || m.metric_name}
@@ -232,14 +231,14 @@ const DashboardPage: React.FC = () => {
               <Button onClick={() => setChannel('all')}>重置</Button>
               <Button
                 onClick={() => {
-                  history.push('/strategy-attribution');
+                  history.push('/analysis/strategy-attribution');
                 }}
               >
                 查看策略归因
               </Button>
               <Button
                 onClick={() => {
-                  history.push('/metric-glossary');
+                  history.push('/analysis/metric-glossary');
                 }}
               >
                 指标口径

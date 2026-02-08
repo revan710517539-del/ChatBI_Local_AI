@@ -50,7 +50,7 @@ const HomePage: React.FC = () => {
           聚焦消费贷与经营贷：统一数据源、可编排 Agent、可执行口径引擎与多模型推理。
         </Paragraph>
         <Space size={12} wrap>
-          <Button type="primary" size="large" onClick={() => history.push('/dashboard')}>
+          <Button type="primary" size="large" onClick={() => history.push('/analysis/dashboard')}>
             进入 Dashboard
           </Button>
           <Button size="large" onClick={() => history.push('/data-discuss')}>
@@ -59,13 +59,13 @@ const HomePage: React.FC = () => {
           <Button size="large" onClick={() => history.push('/llm-source')}>
             配置模型与RAG
           </Button>
-          <Button size="large" onClick={() => history.push('/customer-insights')}>
+          <Button size="large" onClick={() => history.push('/insight/customer-insights')}>
             客户洞察
           </Button>
-          <Button size="large" onClick={() => history.push('/market-watch')}>
+          <Button size="large" onClick={() => history.push('/insight/market-watch')}>
             市场观察
           </Button>
-          <Button size="large" onClick={() => history.push('/strategy-attribution')}>
+          <Button size="large" onClick={() => history.push('/analysis/strategy-attribution')}>
             策略归因
           </Button>
         </Space>

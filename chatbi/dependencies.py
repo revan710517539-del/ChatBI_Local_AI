@@ -12,7 +12,7 @@ import threading
 from collections.abc import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Annotated, Any, Dict, Generic, Optional, Type, TypeVar, Union, cast
+from typing import Annotated, Any, AsyncGenerator, Dict, Generic, Optional, Type, TypeVar, Union, cast
 
 from fastapi import Depends, Header, HTTPException, Request, Security, status
 from fastapi.security.api_key import APIKeyHeader
@@ -79,7 +79,7 @@ class RepositoryDependency(Generic[T]):
         self.repo_class = repo_class
         self.use_async_session = use_async_session
 
-    async def __call__(self) -> T:
+    async def __call__(self) -> AsyncGenerator[T, None]:
         """
         Create repository instance with appropriate session.
 
@@ -90,16 +90,19 @@ class RepositoryDependency(Generic[T]):
             Repository instance
         """
         if self.use_async_session:
-            # Use async session when explicitly requested
-            from chatbi.database.database import get_async_session_direct
+            # Keep session lifecycle bounded to each request to prevent pool leaks.
+            async with get_async_session() as session:
+                yield self.repo_class(session)
+            return
 
-            session = await get_async_session_direct()
-        else:
-            # Otherwise use sync session by default for better compatibility
-            session = get_db_session()
+        # Otherwise use sync session by default for better compatibility.
+        from chatbi.database.database import SyncSessionLocal
 
-        # Create and return repository instance
-        return self.repo_class(session)
+        sync_session = SyncSessionLocal()
+        try:
+            yield self.repo_class(sync_session)
+        finally:
+            sync_session.close()
 
 
 def transactional(func: Callable[..., R]) -> Callable[..., R]:

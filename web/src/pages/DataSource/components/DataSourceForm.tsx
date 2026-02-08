@@ -90,7 +90,7 @@ const DataSourceForm: React.FC<DataSourceFormProps> = ({
         await createDatasource(values);
         message.success('Data source created successfully');
       }
-      navigate('/datasource');
+      navigate('/analysis/datasource');
     } catch (error) {
       console.error('Submit failed:', error);
       message.error('Failed to save data source');
@@ -365,7 +365,7 @@ const DataSourceForm: React.FC<DataSourceFormProps> = ({
 
         <Form.Item>
           <Space>
-            <Button onClick={() => navigate('/datasource')}>
+            <Button onClick={() => navigate('/analysis/datasource')}>
               <ArrowLeftOutlined /> Back
             </Button>
             <Button onClick={handleTestConnection} loading={testing}>

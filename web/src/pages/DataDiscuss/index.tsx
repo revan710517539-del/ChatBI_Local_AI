@@ -165,7 +165,7 @@ const DataDiscussPage: React.FC = () => {
 
                   <Table
                     size="small"
-                    rowKey={(r, i) => `${r.channel}-${i}`}
+                    rowKey={(r) => `${r.channel || 'na'}-${r.target || 'na'}-${r.action || 'na'}`}
                     dataSource={activeStrategy.content?.actions || []}
                     pagination={false}
                     columns={[

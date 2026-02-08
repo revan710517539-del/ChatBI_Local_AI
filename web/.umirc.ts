@@ -23,17 +23,23 @@ export default defineConfig({
     },
     {
       name: '机会洞察',
+      path: '/insight',
       icon: 'BulbOutlined',
       routes: [
         {
+          path: '/insight',
+          redirect: '/insight/market-watch',
+          hideInMenu: true,
+        },
+        {
           name: '市场洞察',
-          path: '/market-watch',
+          path: '/insight/market-watch',
           component: './MarketWatch',
           icon: 'RadarChartOutlined',
         },
         {
           name: '客户洞察',
-          path: '/customer-insights',
+          path: '/insight/customer-insights',
           component: './CustomerInsights',
           icon: 'UsergroupAddOutlined',
         },
@@ -41,29 +47,35 @@ export default defineConfig({
     },
     {
       name: '数据分析',
+      path: '/analysis',
       icon: 'BarChartOutlined',
       routes: [
         {
+          path: '/analysis',
+          redirect: '/analysis/dashboard',
+          hideInMenu: true,
+        },
+        {
           name: '数据表现',
-          path: '/dashboard',
+          path: '/analysis/dashboard',
           component: './Dashboard',
           icon: 'DashboardOutlined',
         },
         {
           name: '策略归因',
-          path: '/strategy-attribution',
+          path: '/analysis/strategy-attribution',
           component: './StrategyAttribution',
           icon: 'LineChartOutlined',
         },
         {
           name: '指标口径',
-          path: '/metric-glossary',
+          path: '/analysis/metric-glossary',
           component: './MetricGlossary',
           icon: 'ProfileOutlined',
         },
         {
           name: '数据源',
-          path: '/datasource',
+          path: '/analysis/datasource',
           component: './DataSource',
           icon: 'DatabaseOutlined',
         },
@@ -77,8 +89,14 @@ export default defineConfig({
     },
     {
       name: '监控诊断',
+      path: '/monitoring',
       icon: 'AlertOutlined',
       routes: [
+        {
+          path: '/monitoring',
+          redirect: '/monitoring/rules',
+          hideInMenu: true,
+        },
         {
           name: '监控规则配置',
           path: '/monitoring/rules',
@@ -101,29 +119,35 @@ export default defineConfig({
     },
     {
       name: 'Agent管理',
+      path: '/agent',
       icon: 'DeploymentUnitOutlined',
       routes: [
         {
+          path: '/agent',
+          redirect: '/agent/agent-builder',
+          hideInMenu: true,
+        },
+        {
           name: 'Agent编排',
-          path: '/agent-builder',
+          path: '/agent/agent-builder',
           component: './AgentBuilder',
           icon: 'DeploymentUnitOutlined',
         },
         {
           name: '知识库',
-          path: '/rag-source',
+          path: '/agent/rag-source',
           component: './RagSource',
           icon: 'BookOutlined',
         },
         {
           name: '技能库',
-          path: '/mcp-skills',
+          path: '/agent/mcp-skills',
           component: './McpSkillHub',
           icon: 'ApiOutlined',
         },
         {
           name: '记忆中心',
-          path: '/memory-center',
+          path: '/agent/memory-center',
           component: './MemoryCenter',
           icon: 'HistoryOutlined',
         },
@@ -136,18 +160,83 @@ export default defineConfig({
       icon: 'RobotOutlined',
     },
     {
-      path: '/datasource/new',
+      path: '/market-watch',
+      redirect: '/insight/market-watch',
+      hideInMenu: true,
+    },
+    {
+      path: '/customer-insights',
+      redirect: '/insight/customer-insights',
+      hideInMenu: true,
+    },
+    {
+      path: '/dashboard',
+      redirect: '/analysis/dashboard',
+      hideInMenu: true,
+    },
+    {
+      path: '/strategy-attribution',
+      redirect: '/analysis/strategy-attribution',
+      hideInMenu: true,
+    },
+    {
+      path: '/metric-glossary',
+      redirect: '/analysis/metric-glossary',
+      hideInMenu: true,
+    },
+    {
+      path: '/datasource',
+      redirect: '/analysis/datasource',
+      hideInMenu: true,
+    },
+    {
+      path: '/agent-builder',
+      redirect: '/agent/agent-builder',
+      hideInMenu: true,
+    },
+    {
+      path: '/rag-source',
+      redirect: '/agent/rag-source',
+      hideInMenu: true,
+    },
+    {
+      path: '/mcp-skills',
+      redirect: '/agent/mcp-skills',
+      hideInMenu: true,
+    },
+    {
+      path: '/memory-center',
+      redirect: '/agent/memory-center',
+      hideInMenu: true,
+    },
+    {
+      path: '/analysis/datasource/new',
       component: './DataSource/New',
       hideInMenu: true,
     },
     {
-      path: '/datasource/edit/:id',
+      path: '/analysis/datasource/edit/:id',
       component: './DataSource/Edit',
       hideInMenu: true,
     },
     {
-      path: '/datasource/query/:id',
+      path: '/analysis/datasource/query/:id',
       component: './DataSource/Query',
+      hideInMenu: true,
+    },
+    {
+      path: '/datasource/new',
+      redirect: '/analysis/datasource/new',
+      hideInMenu: true,
+    },
+    {
+      path: '/datasource/edit/:id',
+      redirect: '/analysis/datasource/edit/:id',
+      hideInMenu: true,
+    },
+    {
+      path: '/datasource/query/:id',
+      redirect: '/analysis/datasource/query/:id',
       hideInMenu: true,
     },
   ],

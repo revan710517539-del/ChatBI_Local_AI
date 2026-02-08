@@ -55,7 +55,7 @@ const EditDataSourcePage: React.FC = () => {
             <button
               key="back"
               className="ant-btn ant-btn-primary"
-              onClick={() => navigate('/datasource')}
+              onClick={() => navigate('/analysis/datasource')}
             >
               Back to Data Sources
             </button>,

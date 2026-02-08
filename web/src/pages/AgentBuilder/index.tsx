@@ -501,7 +501,7 @@ const AgentBuilderPage: React.FC = () => {
         }
       >
         <Table
-          rowKey={(r, i) => `${r.timestamp}-${i}`}
+          rowKey={(r) => `${r.execution_id || 'exec'}-${r.timestamp || 'ts'}-${r.step || 'step'}`}
           dataSource={logs}
           columns={[
             { title: '时间', dataIndex: 'timestamp', width: 200 },

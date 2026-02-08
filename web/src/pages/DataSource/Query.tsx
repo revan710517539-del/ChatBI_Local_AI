@@ -230,7 +230,7 @@ const QueryPage: React.FC = () => {
             <Button
               type="text"
               icon={<ArrowLeftOutlined />}
-              onClick={() => navigate('/datasources')}
+              onClick={() => navigate('/analysis/datasource')}
             />
             <DatabaseOutlined />
             <span>{datasource?.name || 'Datasource'}</span>

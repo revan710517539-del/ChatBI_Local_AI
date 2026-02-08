@@ -18,6 +18,7 @@ export const layout: RunTimeLayoutConfig = () => {
     logo: logo,
     layout: 'side',
     splitMenus: false,
+    defaultOpenAll: false,
     onPageChange: () => {
       // 如果是登录页面，不执行
     },

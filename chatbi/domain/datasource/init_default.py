@@ -27,6 +27,7 @@ async def init_default_datasource():
     Creates a datasource pointing to the Docker PostgreSQL instance if it doesn't exist.
     Uses environment variables or defaults to Docker Compose values.
     """
+    session: AsyncSession | None = None
     try:
         config = get_config()
         
@@ -93,3 +94,6 @@ async def init_default_datasource():
         if session:
             await session.rollback()
         # Don't raise - let the app continue even if default datasource fails
+    finally:
+        if session:
+            await session.close()

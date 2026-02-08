@@ -63,11 +63,11 @@ const DataSourcePage: React.FC = () => {
   };
 
   const handleQuery = (id: string) => {
-    history.push(`/datasource/query/${id}`);
+    history.push(`/analysis/datasource/query/${id}`);
   };
 
   const handleEdit = (id: string) => {
-    history.push(`/datasource/edit/${id}`);
+    history.push(`/analysis/datasource/edit/${id}`);
   };
 
   const dbTypeColorMap: Record<string, string> = {
@@ -231,7 +231,7 @@ const DataSourcePage: React.FC = () => {
             key="add"
             type="primary"
             icon={<PlusOutlined />}
-            onClick={() => history.push('/datasource/new')}
+            onClick={() => history.push('/analysis/datasource/new')}
           >
             New
           </Button>,

@@ -76,7 +76,7 @@ const MonitoringDiagnosisPage: React.FC = () => {
 
       <Card title="规则预览">
         <Table
-          rowKey={(r, i) => `${r.metric_key}-${i}`}
+          rowKey={(r) => `${r.metric_key || 'unknown'}`}
           dataSource={previewRows}
           pagination={false}
           columns={[
